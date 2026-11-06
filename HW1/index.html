@@ -1,0 +1,1389 @@
+<!DOCTYPE html>
+<html lang="th" data-theme="dark">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>ระบบเช็คชื่อนักศึกษาเข้าห้องเรียน (Class Attendance)</title>
+
+  <!-- Google Fonts: 'Prompt' ภาษาไทยโมเดิร์น & 'JetBrains Mono' สำหรับตัวเลข/รหัส -->
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Prompt:ital,wght@0,300;0,400;0,500;0,600;0,700&family=JetBrains+Mono:wght@400;500;600&display=swap" rel="stylesheet">
+
+  <!-- Bootstrap 5 CSS CDN -->
+  <link href="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/css/bootstrap.min.css" rel="stylesheet">
+
+  <!-- sql.js (SQLite WebAssembly สำหรับประมวลผลฐานข้อมูล SQLite แท้ 100%) -->
+  <script src="https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/sql-wasm.js"></script>
+
+  <style>
+    /* ==========================================================================
+       DESIGN SYSTEM (Neutral Charcoal / Zinc Palette & Emerald Green)
+       - ธีมมืด: ดำ-เทากลางแท้ (Zinc 950 / Zinc 900) ปราศจากโทนน้ำเงิน
+       - ระบบเช็คชื่อตามกระบวนการจริงในห้องเรียน (Class Roster & One-Click Marking)
+       ========================================================================== */
+    :root {
+      --font-main: 'Prompt', -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+      --font-mono: 'JetBrains Mono', Consolas, monospace;
+
+      /* Emerald Accent */
+      --primary: #10b981;
+      --primary-hover: #059669;
+      --primary-subtle: rgba(16, 185, 129, 0.12);
+      --primary-glow: rgba(16, 185, 129, 0.25);
+      --primary-border: rgba(16, 185, 129, 0.35);
+      --primary-gradient: linear-gradient(135deg, #10b981 0%, #047857 100%);
+      
+      /* Semantic Status Colors */
+      --status-present: #10b981;
+      --status-present-subtle: rgba(16, 185, 129, 0.14);
+      --status-present-text: #065f46;
+
+      --status-late: #f59e0b;
+      --status-late-subtle: rgba(245, 158, 11, 0.14);
+      --status-late-text: #92400e;
+
+      --status-leave: #0ea5e9;
+      --status-leave-subtle: rgba(14, 165, 233, 0.14);
+      --status-leave-text: #075985;
+
+      --status-absent: #ef4444;
+      --status-absent-subtle: rgba(239, 68, 68, 0.14);
+      --status-absent-text: #991b1b;
+
+      /* Light Theme (Neutral Zinc) */
+      --bg-page: #f4f4f5;
+      --bg-surface: #ffffff;
+      --bg-surface-elevated: #ffffff;
+      --bg-muted: #e4e4e7;
+      --bg-subtle: #f4f4f5;
+      --bg-input: #ffffff;
+
+      --border-base: #e4e4e7;
+      --border-focus: #10b981;
+
+      --text-title: #09090b;
+      --text-body: #27272a;
+      --text-muted: #71717a;
+
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
+      --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.06), 0 2px 4px -2px rgba(0, 0, 0, 0.05);
+      --shadow-lg: 0 10px 25px -3px rgba(0, 0, 0, 0.08);
+
+      --radius-sm: 8px;
+      --radius-md: 12px;
+      --radius-lg: 16px;
+      --transition-smooth: all 0.2s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+
+    /* DARK THEME (True Charcoal / Zinc Neutral) */
+    html[data-theme="dark"] {
+      --bg-page: #09090b;             /* Pure Zinc 950 */
+      --bg-surface: #121215;          /* Neutral Dark Surface */
+      --bg-surface-elevated: #18181b; /* Zinc 900 */
+      --bg-muted: #27272a;            /* Zinc 800 */
+      --bg-subtle: #18181b;           /* Zinc 900 */
+      --bg-input: #18181b;            /* Zinc 900 */
+
+      --border-base: #27272a;         /* Neutral Charcoal Border */
+      --border-focus: #10b981;
+
+      --text-title: #fafafa;
+      --text-body: #d4d4d8;
+      --text-muted: #a1a1aa;
+
+      --shadow-sm: 0 1px 2px 0 rgba(0, 0, 0, 0.4);
+      --shadow-md: 0 4px 12px -2px rgba(0, 0, 0, 0.6);
+      --shadow-lg: 0 12px 30px -4px rgba(0, 0, 0, 0.8);
+
+      --status-present-subtle: rgba(16, 185, 129, 0.18);
+      --status-present-text: #6ee7b7;
+
+      --status-late-subtle: rgba(245, 158, 11, 0.18);
+      --status-late-text: #fcd34d;
+
+      --status-leave-subtle: rgba(14, 165, 233, 0.18);
+      --status-leave-text: #7dd3fc;
+
+      --status-absent-subtle: rgba(239, 68, 68, 0.18);
+      --status-absent-text: #fca5a5;
+    }
+
+    * {
+      box-sizing: border-box;
+      transition: background-color 0.2s ease, border-color 0.2s ease, color 0.2s ease;
+    }
+
+    body {
+      font-family: var(--font-main);
+      background-color: var(--bg-page);
+      color: var(--text-body);
+      min-height: 100vh;
+      display: flex;
+      flex-direction: column;
+      -webkit-font-smoothing: antialiased;
+      line-height: 1.5;
+    }
+
+    /* SVG ICONS BASE */
+    .icon {
+      width: 1.25rem;
+      height: 1.25rem;
+      display: inline-block;
+      vertical-align: middle;
+      flex-shrink: 0;
+    }
+    .icon-fill { fill: currentColor; }
+    .icon-stroke { stroke: currentColor; fill: none; }
+    .icon-sm { width: 1rem; height: 1rem; }
+    .icon-lg { width: 1.45rem; height: 1.45rem; }
+    .icon-xl { width: 2.5rem; height: 2.5rem; }
+
+    /* HEADER */
+    .app-header {
+      background-color: var(--bg-surface);
+      border-bottom: 1px solid var(--border-base);
+      position: sticky;
+      top: 0;
+      z-index: 1020;
+    }
+
+    .brand-mark {
+      width: 42px;
+      height: 42px;
+      border-radius: var(--radius-md);
+      background: var(--primary-gradient);
+      color: #ffffff;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 12px var(--primary-glow);
+    }
+
+    .pill-info {
+      background-color: var(--bg-subtle);
+      border: 1px solid var(--border-base);
+      border-radius: 9999px;
+      height: 36px;
+      padding: 0 0.95rem;
+      font-size: 0.84rem;
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      gap: 0.5rem;
+      box-sizing: border-box;
+    }
+
+    .theme-toggle-btn {
+      width: 36px;
+      height: 36px;
+      border-radius: 8px;
+      border: 1px solid var(--border-base);
+      background-color: var(--bg-subtle);
+      color: var(--text-title);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      box-sizing: border-box;
+    }
+    .theme-toggle-btn:hover {
+      background-color: var(--bg-muted);
+      border-color: var(--primary);
+      color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+
+
+    /* STAT CARDS */
+    .stat-card {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-lg);
+      padding: 1.25rem 1.4rem;
+      box-shadow: var(--shadow-sm);
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      transition: var(--transition-smooth);
+    }
+    .stat-card:hover {
+      transform: translateY(-2px);
+      box-shadow: var(--shadow-md);
+      border-color: var(--primary-border);
+    }
+    .stat-label {
+      font-size: 0.85rem;
+      font-weight: 500;
+      color: var(--text-muted);
+    }
+    .stat-count {
+      font-size: 1.85rem;
+      font-weight: 700;
+      color: var(--text-title);
+      margin: 0.15rem 0 0 0;
+      line-height: 1.1;
+    }
+    .stat-icon-wrap {
+      width: 46px;
+      height: 46px;
+      border-radius: var(--radius-md);
+      display: flex;
+      align-items: center;
+      justify-content: center;
+    }
+    .stat-present .stat-icon-wrap { background: var(--status-present-subtle); color: var(--status-present); }
+    .stat-late .stat-icon-wrap { background: var(--status-late-subtle); color: var(--status-late); }
+    .stat-leave .stat-icon-wrap { background: var(--status-leave-subtle); color: var(--status-leave); }
+    .stat-absent .stat-icon-wrap { background: var(--status-absent-subtle); color: var(--status-absent); }
+
+    /* PANELS */
+    .app-panel {
+      background-color: var(--bg-surface);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-sm);
+    }
+
+    /* Buttons */
+    .btn-emerald {
+      height: 36px;
+      padding: 0 0.95rem;
+      background: var(--primary-gradient);
+      color: #ffffff;
+      border: none;
+      border-radius: 8px;
+      font-weight: 500;
+      font-size: 0.85rem;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      box-shadow: 0 2px 8px var(--primary-glow);
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      white-space: nowrap;
+      box-sizing: border-box;
+      vertical-align: middle;
+    }
+    .btn-emerald:hover {
+      background: linear-gradient(135deg, #059669 0%, #047857 100%);
+      transform: translateY(-1px);
+      box-shadow: 0 4px 12px var(--primary-glow);
+      color: #ffffff;
+    }
+
+    .btn-zinc {
+      height: 36px;
+      padding: 0 0.85rem;
+      background-color: var(--bg-subtle);
+      border: 1px solid var(--border-base);
+      color: var(--text-body);
+      border-radius: 8px;
+      font-size: 0.85rem;
+      font-weight: 500;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      gap: 0.45rem;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      white-space: nowrap;
+      box-sizing: border-box;
+      vertical-align: middle;
+    }
+    .btn-zinc:hover {
+      background-color: var(--bg-muted);
+      border-color: var(--primary);
+      color: var(--primary);
+      transform: translateY(-1px);
+    }
+
+    /* Table */
+    .table-container {
+      overflow-x: auto;
+    }
+    .table-modern {
+      width: 100%;
+      margin-bottom: 0;
+      border-collapse: separate;
+      border-spacing: 0;
+    }
+    .table-modern thead th {
+      background-color: var(--bg-subtle);
+      color: var(--text-muted);
+      font-size: 0.78rem;
+      font-weight: 600;
+      text-transform: uppercase;
+      letter-spacing: 0.5px;
+      padding: 0.85rem 1.1rem;
+      border-bottom: 1px solid var(--border-base);
+      white-space: nowrap;
+    }
+    .table-modern tbody td {
+      padding: 0.85rem 1.1rem;
+      border-bottom: 1px solid var(--border-base);
+      color: var(--text-body);
+      font-size: 0.92rem;
+      vertical-align: middle;
+    }
+    .table-modern tbody tr:hover {
+      background-color: var(--bg-subtle);
+    }
+
+    .code-pill {
+      font-family: var(--font-mono);
+      font-weight: 600;
+      font-size: 0.82rem;
+      height: 28px;
+      background-color: var(--bg-subtle);
+      color: var(--text-title);
+      padding: 0 0.6rem;
+      border-radius: 6px;
+      border: 1px solid var(--border-base);
+      display: inline-flex;
+      align-items: center;
+    }
+
+    /* ==========================================================================
+       REAL CLASSROOM ATTENDANCE BUTTON GROUP (แถบกดเช็คชื่อจริงแบบ 1-Click)
+       ========================================================================== */
+    .status-group {
+      display: inline-flex;
+      align-items: center;
+      height: 32px;
+      background-color: var(--bg-subtle);
+      border: 1px solid var(--border-base);
+      border-radius: 8px;
+      padding: 2px;
+      gap: 2px;
+      box-sizing: border-box;
+      vertical-align: middle;
+    }
+    .btn-status-mark {
+      height: 26px;
+      border: none;
+      background: transparent;
+      font-size: 0.82rem;
+      font-weight: 500;
+      padding: 0 0.75rem;
+      border-radius: 6px;
+      color: var(--text-muted);
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      line-height: 1;
+      box-sizing: border-box;
+    }
+    .btn-status-mark:hover {
+      color: var(--text-title);
+      background-color: var(--bg-muted);
+    }
+    
+    /* Active States */
+    .btn-status-mark.active-present {
+      background-color: var(--status-present);
+      color: #ffffff !important;
+      font-weight: 600;
+      box-shadow: 0 2px 8px var(--primary-glow);
+    }
+    .btn-status-mark.active-late {
+      background-color: var(--status-late);
+      color: #ffffff !important;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(245, 158, 11, 0.3);
+    }
+    .btn-status-mark.active-leave {
+      background-color: var(--status-leave);
+      color: #ffffff !important;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(14, 165, 233, 0.3);
+    }
+    .btn-status-mark.active-absent {
+      background-color: var(--status-absent);
+      color: #ffffff !important;
+      font-weight: 600;
+      box-shadow: 0 2px 8px rgba(239, 68, 68, 0.3);
+    }
+
+    .btn-delete {
+      width: 32px;
+      height: 32px;
+      border-radius: 8px;
+      border: 1px solid transparent;
+      background-color: transparent;
+      color: var(--text-muted);
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      transition: var(--transition-smooth);
+      box-sizing: border-box;
+      vertical-align: middle;
+    }
+    .btn-delete:hover {
+      background-color: var(--status-absent-subtle);
+      color: var(--status-absent);
+      transform: scale(1.05);
+    }
+
+    /* Modal Styling */
+    .modal-content-zinc {
+      background-color: var(--bg-surface-elevated);
+      color: var(--text-title);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-lg);
+      box-shadow: var(--shadow-lg);
+    }
+    .modal-header-zinc {
+      border-bottom: 1px solid var(--border-base);
+    }
+    .modal-footer-zinc {
+      border-top: 1px solid var(--border-base);
+    }
+
+    .input-field {
+      height: 36px;
+      background-color: var(--bg-input);
+      border: 1px solid var(--border-base);
+      border-radius: 8px;
+      padding: 0 0.85rem;
+      color: var(--text-title);
+      font-size: 0.85rem;
+      outline: none;
+      transition: var(--transition-smooth);
+      box-sizing: border-box;
+      display: inline-flex;
+      align-items: center;
+      vertical-align: middle;
+    }
+    select.input-field {
+      padding-right: 1.8rem;
+    }
+    .input-field:focus {
+      border-color: var(--border-focus);
+      box-shadow: 0 0 0 3px var(--primary-subtle);
+      background-color: var(--bg-input);
+      color: var(--text-title);
+    }
+
+    /* Toast */
+    .toast-box {
+      background-color: var(--bg-surface-elevated);
+      color: var(--text-title);
+      border: 1px solid var(--border-base);
+      border-radius: var(--radius-md);
+      box-shadow: var(--shadow-lg);
+    }
+  </style>
+</head>
+<body>
+
+  <!-- ==========================================================================
+       SVG ICONS (Clean, Modern Vector Icons)
+       ========================================================================== -->
+  <svg style="display: none;" xmlns="http://www.w3.org/2000/svg">
+    <!-- Brand -->
+    <symbol id="icon-brand" viewBox="0 0 24 24" class="icon-fill">
+      <path d="M19 3H5c-1.1 0-2 .9-2 2v14c0 1.1.9 2 2 2h14c1.1 0 2-.9 2-2V5c0-1.1-.9-2-2-2zm-7 3c1.66 0 3 1.34 3 3s-1.34 3-3 3-3-1.34-3-3 1.34-3 3-3zm6 12H6v-1.4c0-2 4-3.1 6-3.1s6 1.1 6 3.1V18z"/>
+    </symbol>
+
+    <!-- Clock -->
+    <symbol id="icon-clock" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <polyline points="12 6 12 12 16 14"></polyline>
+    </symbol>
+
+    <!-- Database -->
+    <symbol id="icon-database" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <ellipse cx="12" cy="5" rx="9" ry="3"></ellipse>
+      <path d="M21 12c0 1.66-4 3-9 3s-9-1.34-9-3"></path>
+      <path d="M3 5v14c0 1.66 4 3 9 3s9-1.34 9-3V5"></path>
+    </symbol>
+
+    <!-- Check -->
+    <symbol id="icon-check" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M22 11.08V12a10 10 0 1 1-5.93-9.14"></path>
+      <polyline points="22 4 12 14.01 9 11.01"></polyline>
+    </symbol>
+
+    <!-- Late -->
+    <symbol id="icon-late" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <polyline points="12 6 12 12 15 15"></polyline>
+    </symbol>
+
+    <!-- Leave -->
+    <symbol id="icon-leave" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M14 2H6a2 2 0 0 0-2 2v16a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V8z"></path>
+      <polyline points="14 2 14 8 20 8"></polyline>
+      <line x1="16" y1="13" x2="8" y2="13"></line>
+      <line x1="16" y1="17" x2="8" y2="17"></line>
+    </symbol>
+
+    <!-- Absent -->
+    <symbol id="icon-absent" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="10"></circle>
+      <line x1="15" y1="9" x2="9" y2="15"></line>
+      <line x1="9" y1="9" x2="15" y2="15"></line>
+    </symbol>
+
+    <!-- User Plus -->
+    <symbol id="icon-user-plus" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M16 21v-2a4 4 0 0 0-4-4H5a4 4 0 0 0-4 4v2"></path>
+      <circle cx="8.5" cy="7" r="4"></circle>
+      <line x1="20" y1="8" x2="20" y2="14"></line>
+      <line x1="23" y1="11" x2="17" y2="11"></line>
+    </symbol>
+
+    <!-- Check All -->
+    <symbol id="icon-check-all" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="18 6 7 17 2 12"></polyline>
+      <polyline points="22 10 15 17 13 15"></polyline>
+    </symbol>
+
+    <!-- Trash -->
+    <symbol id="icon-trash" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <polyline points="3 6 5 6 21 6"></polyline>
+      <path d="M19 6v14a2 2 0 0 1-2 2H7a2 2 0 0 1-2-2V6m3 0V4a2 2 0 0 1 2-2h4a2 2 0 0 1 2 2v2"></path>
+    </symbol>
+
+    <!-- Sun -->
+    <symbol id="icon-sun" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="12" cy="12" r="5"></circle>
+      <line x1="12" y1="1" x2="12" y2="3"></line>
+      <line x1="12" y1="21" x2="12" y2="23"></line>
+      <line x1="4.22" y1="4.22" x2="5.64" y2="5.64"></line>
+      <line x1="18.36" y1="18.36" x2="19.78" y2="19.78"></line>
+      <line x1="1" y1="12" x2="3" y2="12"></line>
+      <line x1="21" y1="12" x2="23" y2="12"></line>
+      <line x1="4.22" y1="19.78" x2="5.64" y2="18.36"></line>
+      <line x1="18.36" y1="5.64" x2="19.78" y2="4.22"></line>
+    </symbol>
+
+    <!-- Moon -->
+    <symbol id="icon-moon" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 12.79A9 9 0 1 1 11.21 3 7 7 0 0 0 21 12.79z"></path>
+    </symbol>
+
+    <!-- Search -->
+    <symbol id="icon-search" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <circle cx="11" cy="11" r="8"></circle>
+      <line x1="21" y1="21" x2="16.65" y2="16.65"></line>
+    </symbol>
+
+    <!-- Download -->
+    <symbol id="icon-download" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+      <polyline points="7 10 12 15 17 10"></polyline>
+      <line x1="12" y1="15" x2="12" y2="3"></line>
+    </symbol>
+
+    <!-- Upload -->
+    <symbol id="icon-upload" viewBox="0 0 24 24" class="icon-stroke" stroke-width="2" stroke-linecap="round" stroke-linejoin="round">
+      <path d="M21 15v4a2 2 0 0 1-2 2H5a2 2 0 0 1-2-2v-4"></path>
+      <polyline points="17 8 12 3 7 8"></polyline>
+      <line x1="12" y1="3" x2="12" y2="15"></line>
+    </symbol>
+  </svg>
+
+  <!-- ==========================================================================
+       HEADER
+       ========================================================================== -->
+  <header class="app-header py-3">
+    <div class="container-fluid px-lg-5">
+      <div class="d-flex flex-wrap align-items-center justify-content-between gap-3">
+        
+        <!-- Logo & Title -->
+        <div class="d-flex align-items-center gap-3">
+          <div class="brand-mark">
+            <svg class="icon icon-lg"><use href="#icon-brand"/></svg>
+          </div>
+          <div>
+            <h1 class="h5 fw-bold mb-0" style="color: var(--text-title); letter-spacing: -0.2px;">ระบบเช็คชื่อนักศึกษาเข้าห้องเรียน</h1>
+            <p class="small mb-0" style="color: var(--text-muted);">Class Attendance Management &bull; SQLite Engine</p>
+          </div>
+        </div>
+
+        <!-- Clock & Theme Switcher -->
+        <div class="d-flex flex-wrap align-items-center gap-3">
+          
+          <div class="pill-info d-none d-md-inline-flex">
+            <svg class="icon icon-sm text-success"><use href="#icon-clock"/></svg>
+            <span id="currentClock">กำลังโหลดเวลา...</span>
+          </div>
+
+          <!-- Theme Toggle -->
+          <button type="button" class="theme-toggle-btn" id="themeToggleBtn" onclick="toggleTheme()" title="สลับโหมดมืด / สว่าง">
+            <svg class="icon" id="themeIcon"><use href="#icon-sun"/></svg>
+          </button>
+
+        </div>
+
+      </div>
+    </div>
+  </header>
+
+  <!-- ==========================================================================
+       MAIN CONTENT
+       ========================================================================== -->
+  <main class="container-fluid px-lg-5 py-4 flex-grow-1">
+
+    <!-- 1. STAT CARDS (4 สถานะ คลีน สะอาด) -->
+    <section class="row g-3 mb-4">
+      
+      <div class="col-6 col-xl-3">
+        <div class="stat-card stat-present">
+          <div>
+            <div class="stat-label">มาเรียน</div>
+            <div class="stat-count" id="statPresent">0</div>
+          </div>
+          <div class="stat-icon-wrap">
+            <svg class="icon icon-lg"><use href="#icon-check"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-6 col-xl-3">
+        <div class="stat-card stat-late">
+          <div>
+            <div class="stat-label">มาสาย</div>
+            <div class="stat-count" id="statLate">0</div>
+          </div>
+          <div class="stat-icon-wrap">
+            <svg class="icon icon-lg"><use href="#icon-late"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-6 col-xl-3">
+        <div class="stat-card stat-leave">
+          <div>
+            <div class="stat-label">ลา</div>
+            <div class="stat-count" id="statLeave">0</div>
+          </div>
+          <div class="stat-icon-wrap">
+            <svg class="icon icon-lg"><use href="#icon-leave"/></svg>
+          </div>
+        </div>
+      </div>
+
+      <div class="col-6 col-xl-3">
+        <div class="stat-card stat-absent">
+          <div>
+            <div class="stat-label">ขาดเรียน</div>
+            <div class="stat-count" id="statAbsent">0</div>
+          </div>
+          <div class="stat-icon-wrap">
+            <svg class="icon icon-lg"><use href="#icon-absent"/></svg>
+          </div>
+        </div>
+      </div>
+
+    </section>
+
+    <!-- 2. CLASSROOM ATTENDANCE WORKSPACE -->
+    <div class="app-panel overflow-hidden">
+      
+      <!-- Top Action Toolbar -->
+      <div class="p-3 px-4 border-bottom d-flex flex-wrap align-items-center justify-content-between gap-3" style="border-color: var(--border-base) !important;">
+        
+        <!-- Left: Quick ID Scan & Search -->
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          
+          <!-- ปุ่มเปิด Modal "เพิ่มนักเรียน" -->
+          <button type="button" class="btn-emerald" onclick="openAddStudentModal()">
+            <svg class="icon icon-sm"><use href="#icon-user-plus"/></svg>
+            <span>เพิ่มนักเรียน</span>
+          </button>
+
+          <!-- ปุ่มลัดเช็คมาทุกคน -->
+          <button type="button" class="btn-zinc" onclick="markAllPresent()" title="เช็คสถานะ 'มาเรียน' ให้นักเรียนทุกคนในคลิกเดียว">
+            <svg class="icon icon-sm text-success"><use href="#icon-check-all"/></svg>
+            <span>เช็คมาทุกคน</span>
+          </button>
+
+          <!-- Quick Barcode / ID Check-in Input -->
+          <div style="position: relative; width: 260px;">
+            <input type="text" id="quickIdInput" class="input-field w-100" placeholder="พิมพ์รหัสแล้ว Enter เพื่อเช็คชื่อ...">
+          </div>
+
+        </div>
+
+        <!-- Right: Filter, DB Export/Import, CSV -->
+        <div class="d-flex flex-wrap align-items-center gap-2">
+          
+          <!-- ค้นหารายชื่อ -->
+          <div style="position: relative; width: 170px;">
+            <input type="text" id="searchInput" class="input-field w-100" placeholder="ค้นหาชื่อ / รหัส..." oninput="renderTable()">
+          </div>
+
+          <!-- ตัวกรองสถานะ -->
+          <select class="input-field" id="filterStatus" onchange="renderTable()">
+            <option value="ALL">ทุกสถานะ</option>
+            <option value="มาเรียน">มาเรียน</option>
+            <option value="มาสาย">มาสาย</option>
+            <option value="ลา">ลา</option>
+            <option value="ขาดเรียน">ขาดเรียน</option>
+            <option value="UNCHECKED">ยังไม่เช็ค</option>
+          </select>
+
+          <!-- บันทึกไฟล์ SQLite (.db) -->
+          <button type="button" class="btn-zinc" onclick="exportDatabaseFile()" title="บันทึกและดาวน์โหลดฐานข้อมูล SQLite (.db) จริง">
+            <svg class="icon icon-sm text-success"><use href="#icon-database"/></svg>
+            <span>บันทึก .db</span>
+          </button>
+
+          <!-- เปิดไฟล์ SQLite (.db) -->
+          <button type="button" class="btn-zinc" onclick="triggerImportDb()" title="เปิดไฟล์ SQLite (.db) จากคอมพิวเตอร์">
+            <svg class="icon icon-sm"><use href="#icon-upload"/></svg>
+            <span>เปิด .db</span>
+          </button>
+          <input type="file" id="importDbInput" accept=".db,.sqlite,.sqlite3" style="display: none;" onchange="importDatabaseFile(event)">
+
+          <!-- ส่งออก CSV -->
+          <button type="button" class="btn-zinc" onclick="exportToCSV()" title="ส่งออกตารางเป็นไฟล์ CSV">
+            <svg class="icon icon-sm"><use href="#icon-download"/></svg>
+            <span>CSV</span>
+          </button>
+
+        </div>
+
+      </div>
+
+      <!-- Attendance Table -->
+      <div class="table-container">
+        <table class="table-modern" id="attendanceTable">
+          <thead>
+            <tr>
+              <th class="text-center" style="width: 60px;">ลำดับ</th>
+              <th style="width: 150px;">รหัสนักศึกษา</th>
+              <th style="width: 240px;">ชื่อ - นามสกุล</th>
+              <th style="width: 280px;">การเช็คชื่อเข้าห้องเรียน</th>
+              <th style="width: 160px;">เวลาที่บันทึก</th>
+              <th class="text-center" style="width: 60px;"></th>
+            </tr>
+          </thead>
+          <tbody id="attendanceTbody">
+            <!-- ข้อมูลรายชื่อและการเช็คชื่อจะเรนเดอร์ผ่าน JavaScript จาก SQLite -->
+          </tbody>
+        </table>
+      </div>
+
+      <!-- Empty State -->
+      <div id="emptyState" class="p-5 text-center d-none">
+        <p class="text-muted mb-3">ยังไม่มีรายชื่อนักเรียนในรายวิชานี้</p>
+        <button type="button" class="btn-emerald mx-auto" onclick="openAddStudentModal()">
+          <svg class="icon icon-sm"><use href="#icon-user-plus"/></svg>
+          <span>เพิ่มนักเรียนคนแรก</span>
+        </button>
+      </div>
+
+    </div>
+  </main>
+
+  <!-- ==========================================================================
+       MODAL: เพิ่มนักเรียนใหม่ในรายวิชา
+       ========================================================================== -->
+  <div class="modal fade" id="addStudentModal" tabindex="-1" aria-hidden="true">
+    <div class="modal-dialog modal-dialog-centered" style="max-width: 440px;">
+      <div class="modal-content modal-content-zinc">
+        
+        <div class="modal-header modal-header-zinc p-3 px-4">
+          <div class="d-flex align-items-center gap-2">
+            <svg class="icon text-success"><use href="#icon-user-plus"/></svg>
+            <h5 class="modal-title h6 fw-bold mb-0">เพิ่มนักเรียนในรายวิชา</h5>
+          </div>
+          <button type="button" class="btn-close btn-close-white" data-bs-dismiss="modal" aria-label="Close"></button>
+        </div>
+
+        <form id="addStudentForm" autocomplete="off">
+          <div class="modal-body p-4">
+            
+            <div class="mb-3">
+              <label for="newStudentId" class="form-label small fw-semibold text-secondary">รหัสนักศึกษา</label>
+              <input type="text" class="input-field w-100" id="newStudentId" placeholder="เช่น 65010999" required autofocus>
+            </div>
+
+            <div class="mb-2">
+              <label for="newStudentName" class="form-label small fw-semibold text-secondary">ชื่อ - นามสกุล</label>
+              <input type="text" class="input-field w-100" id="newStudentName" placeholder="เช่น สมชาย ใจดี" required>
+            </div>
+
+          </div>
+
+          <div class="modal-footer modal-footer-zinc p-3 px-4 d-flex justify-content-end gap-2">
+            <button type="button" class="btn-zinc" data-bs-dismiss="modal">ยกเลิก</button>
+            <button type="submit" class="btn-emerald">บันทึกข้อมูล</button>
+          </div>
+        </form>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- TOAST NOTIFICATION -->
+  <div class="position-fixed bottom-0 end-0 p-3" style="z-index: 1090;">
+    <div id="actionToast" class="toast toast-box align-items-center border-0" role="alert" aria-live="assertive" aria-atomic="true">
+      <div class="d-flex p-2 align-items-center">
+        <div class="toast-body d-flex align-items-center gap-2">
+          <span id="toastIconWrap" class="text-success">
+            <svg class="icon"><use href="#icon-check"/></svg>
+          </span>
+          <span id="toastMessage" class="small fw-semibold">บันทึกข้อมูลเรียบร้อย</span>
+        </div>
+        <button type="button" class="btn-close me-2 m-auto" data-bs-dismiss="toast" aria-label="Close"></button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Bootstrap Bundle JS -->
+  <script src="https://cdn.jsdelivr.net/npm/bootstrap@5.3.3/dist/js/bootstrap.bundle.min.js"></script>
+
+  <!-- ==========================================================================
+       JAVASCRIPT: REAL CLASS ATTENDANCE ENGINE (SQLite WebAssembly)
+       ========================================================================== -->
+  <script>
+    let db = null;
+    let SQLInstance = null;
+    let toastInstance = null;
+    let studentModalInstance = null;
+
+    window.addEventListener('DOMContentLoaded', () => {
+      const savedTheme = localStorage.getItem('class_attendance_theme') || 'dark';
+      applyTheme(savedTheme);
+
+      startRealtimeClock();
+
+      const toastEl = document.getElementById('actionToast');
+      toastInstance = new bootstrap.Toast(toastEl, { delay: 2400 });
+
+      const modalEl = document.getElementById('addStudentModal');
+      studentModalInstance = new bootstrap.Modal(modalEl);
+
+      // Event Enter สำหรับ Quick ID Check-in
+      document.getElementById('quickIdInput').addEventListener('keydown', function(e) {
+        if (e.key === 'Enter') {
+          e.preventDefault();
+          handleQuickCheckIn(this.value.trim());
+          this.value = '';
+        }
+      });
+
+      initDatabase();
+    });
+
+    /* Theme Toggle */
+    function toggleTheme() {
+      const current = document.documentElement.getAttribute('data-theme') || 'dark';
+      const nextTheme = current === 'dark' ? 'light' : 'dark';
+      applyTheme(nextTheme);
+    }
+
+    function applyTheme(theme) {
+      document.documentElement.setAttribute('data-theme', theme);
+      localStorage.setItem('class_attendance_theme', theme);
+
+      const icon = document.getElementById('themeIcon');
+      if (theme === 'dark') {
+        icon.innerHTML = '<use href="#icon-sun"/>';
+      } else {
+        icon.innerHTML = '<use href="#icon-moon"/>';
+      }
+    }
+
+    /* Clock */
+    function startRealtimeClock() {
+      const clockElement = document.getElementById('currentClock');
+      const thaiDays = ['อา.', 'จ.', 'อ.', 'พ.', 'พฤ.', 'ศ.', 'ส.'];
+      const thaiMonths = [
+        'ม.ค.', 'ก.พ.', 'มี.ค.', 'เม.ย.', 'พ.ค.', 'มิ.ย.',
+        'ก.ค.', 'ส.ค.', 'ก.ย.', 'ต.ค.', 'พ.ย.', 'ธ.ค.'
+      ];
+
+      function tick() {
+        const now = new Date();
+        const day = thaiDays[now.getDay()];
+        const date = now.getDate();
+        const month = thaiMonths[now.getMonth()];
+        const year = now.getFullYear() + 543;
+        
+        const h = String(now.getHours()).padStart(2, '0');
+        const m = String(now.getMinutes()).padStart(2, '0');
+        const s = String(now.getSeconds()).padStart(2, '0');
+
+        clockElement.textContent = `${day} ${date} ${month} ${year} | ${h}:${m}:${s} น.`;
+      }
+      tick();
+      setInterval(tick, 1000);
+    }
+
+    /* ==========================================================================
+       SQLITE DATABASE CONTROLLER (with Local Persistence)
+       ========================================================================== */
+    async function initDatabase() {
+      try {
+        SQLInstance = await initSqlJs({
+          locateFile: file => `https://cdnjs.cloudflare.com/ajax/libs/sql.js/1.8.0/${file}`
+        });
+
+        // ตรวจสอบฐานข้อมูล SQLite ที่เซฟไว้ใน localStorage
+        const savedBase64 = localStorage.getItem('class_attendance_sqlite_bin');
+        if (savedBase64) {
+          try {
+            const bytes = base64ToUint8(savedBase64);
+            db = new SQLInstance.Database(bytes);
+          } catch (e) {
+            console.warn("Could not load saved database, initializing new:", e);
+            db = new SQLInstance.Database();
+          }
+        } else {
+          db = new SQLInstance.Database();
+        }
+
+        // 1. ตารางรายชื่อนักเรียนในรายวิชา (Roster)
+        db.run(`
+          CREATE TABLE IF NOT EXISTS students (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id TEXT UNIQUE NOT NULL,
+            student_name TEXT NOT NULL
+          );
+        `);
+
+        // 2. ตารางการเช็คชื่อ (ตามข้อกำหนด id, student_id, student_name, status, check_time)
+        db.run(`
+          CREATE TABLE IF NOT EXISTS attendance (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            student_id TEXT NOT NULL,
+            student_name TEXT NOT NULL,
+            status TEXT NOT NULL,
+            check_time TEXT NOT NULL
+          );
+        `);
+
+        // ตรวจสอบว่ามีรายชื่อนักเรียนหรือยัง ถ้ายังไม่มี ให้ใส่รายชื่อห้องเรียนเริ่มต้น
+        const checkStudents = db.exec("SELECT COUNT(*) FROM students;");
+        const studentCount = checkStudents.length ? checkStudents[0].values[0][0] : 0;
+
+        if (studentCount === 0) {
+          seedClassRoster();
+        }
+
+        renderTable();
+
+      } catch (err) {
+        console.error("Database initialization failed:", err);
+        showToast("ไม่สามารถโหลดระบบฐานข้อมูลได้", "danger");
+      }
+    }
+
+    /* รายชื่อนักเรียนเริ่มต้นในรายวิชา (Class Roster) */
+    function seedClassRoster() {
+      const initialRoster = [
+        { id: "65010123", name: "กฤษฎา วงศ์สว่าง", status: "มาเรียน", time: "08:42:15 น." },
+        { id: "65010145", name: "ณภัทร พิทยานุกูล", status: "มาเรียน", time: "08:50:30 น." },
+        { id: "65010167", name: "วริศรา บุญประสิทธิ์", status: "มาสาย", time: "09:12:05 น." },
+        { id: "65010188", name: "ธนภัทร รัตนศิลป์", status: "ลา", time: "08:30:00 น." },
+        { id: "65010210", name: "กานต์พิชชา มหาสมุทร", status: "ขาดเรียน", time: "09:30:00 น." },
+        { id: "65010225", name: "พงศกร พัฒนพงษ์", status: "มาเรียน", time: "08:55:10 น." },
+        { id: "65010240", name: "นลินรัตน์ ศรีสวัสดิ์", status: "มาเรียน", time: "08:58:22 น." }
+      ];
+
+      initialRoster.forEach(s => {
+        db.run("INSERT OR IGNORE INTO students (student_id, student_name) VALUES (?, ?);", [s.id, s.name]);
+        db.run("INSERT INTO attendance (student_id, student_name, status, check_time) VALUES (?, ?, ?, ?);", [s.id, s.name, s.status, s.time]);
+      });
+
+      persistDatabase();
+    }
+
+    /* บันทึก Binary SQLite ลง LocalStorage */
+    function persistDatabase() {
+      if (!db) return;
+      try {
+        const binaryData = db.export();
+        const base64Str = uint8ToBase64(binaryData);
+        localStorage.setItem('class_attendance_sqlite_bin', base64Str);
+      } catch (err) {
+        console.warn("Persistence error:", err);
+      }
+    }
+
+    function uint8ToBase64(u8Arr) {
+      const CHUNK_SIZE = 0x8000;
+      let index = 0;
+      const length = u8Arr.length;
+      let result = '';
+      while (index < length) {
+        const slice = u8Arr.subarray(index, Math.min(index + CHUNK_SIZE, length));
+        result += String.fromCharCode.apply(null, slice);
+        index += CHUNK_SIZE;
+      }
+      return btoa(result);
+    }
+
+    function base64ToUint8(base64) {
+      const binary = atob(base64);
+      const len = binary.length;
+      const bytes = new Uint8Array(len);
+      for (let i = 0; i < len; i++) {
+        bytes[i] = binary.charCodeAt(i);
+      }
+      return bytes;
+    }
+
+    /* ==========================================================================
+       กระบวนการเช็คชื่อจริงในห้องเรียน (REAL ATTENDANCE WORKFLOW)
+       ========================================================================== */
+
+    /* คลิกเปลี่ยนสถานะของนักเรียน 1 คนทันที (1-Click Marking) */
+    function markAttendance(studentId, studentName, newStatus) {
+      if (!db) return;
+
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} น.`;
+
+      try {
+        // ลบสถานะเดิมของนักเรียนคนนี้ก่อน แล้ว Insert รายการล่าสุดลง attendance table
+        db.run("DELETE FROM attendance WHERE student_id = ?;", [studentId]);
+        db.run("INSERT INTO attendance (student_id, student_name, status, check_time) VALUES (?, ?, ?, ?);", [studentId, studentName, newStatus, timeStr]);
+
+        persistDatabase();
+        renderTable();
+        showToast(`เช็ค "${studentName}" เป็น "${newStatus}" เรียบร้อย`, "success");
+
+      } catch (err) {
+        console.error("Marking failed:", err);
+        showToast("ไม่สามารถบันทึกสถานะได้", "danger");
+      }
+    }
+
+    /* ยิงบาร์โค้ด / พิมพ์รหัสนักศึกษาแล้ว Enter เช็คชื่อ "มาเรียน" ทันที */
+    function handleQuickCheckIn(studentId) {
+      if (!studentId || !db) return;
+
+      // ค้นหาชื่อนักเรียนจากตาราง students
+      const res = db.exec("SELECT student_name FROM students WHERE student_id = ?;", [studentId]);
+      if (!res.length || !res[0].values.length) {
+        showToast(`ไม่พบรหัสนักศึกษา "${studentId}" ในรายวิชานี้`, "warning");
+        return;
+      }
+
+      const studentName = res[0].values[0][0];
+      markAttendance(studentId, studentName, "มาเรียน");
+    }
+
+    /* เช็คมาเรียนทุกคนในคลิกเดียว */
+    function markAllPresent() {
+      if (!db) return;
+      if (!confirm("ต้องการเช็ค 'มาเรียน' ให้กับนักเรียนทุกคนใช่หรือไม่?")) return;
+
+      const studentsRes = db.exec("SELECT student_id, student_name FROM students ORDER BY id ASC;");
+      if (!studentsRes.length || !studentsRes[0].values.length) {
+        showToast("ไม่มีรายชื่อนักเรียนในระบบ", "warning");
+        return;
+      }
+
+      const now = new Date();
+      const timeStr = `${String(now.getHours()).padStart(2, '0')}:${String(now.getMinutes()).padStart(2, '0')}:${String(now.getSeconds()).padStart(2, '0')} น.`;
+
+      studentsRes[0].values.forEach(([sId, sName]) => {
+        db.run("DELETE FROM attendance WHERE student_id = ?;", [sId]);
+        db.run("INSERT INTO attendance (student_id, student_name, status, check_time) VALUES (?, ?, ?, ?);", [sId, sName, "มาเรียน", timeStr]);
+      });
+
+      persistDatabase();
+      renderTable();
+      showToast("เช็คสถานะ 'มาเรียน' ให้นักเรียนทุกคนเรียบร้อย", "success");
+    }
+
+    /* ==========================================================================
+       เพิ่มนักเรียนใหม่ (ADD STUDENT MODAL)
+       ========================================================================== */
+    function openAddStudentModal() {
+      document.getElementById('newStudentId').value = '';
+      document.getElementById('newStudentName').value = '';
+      studentModalInstance.show();
+      setTimeout(() => document.getElementById('newStudentId').focus(), 300);
+    }
+
+    document.getElementById('addStudentForm').addEventListener('submit', function(e) {
+      e.preventDefault();
+
+      const id = document.getElementById('newStudentId').value.trim();
+      const name = document.getElementById('newStudentName').value.trim();
+
+      if (!id || !name) return;
+
+      try {
+        // ตรวจสอบว่ารหัสซ้ำหรือไม่
+        const check = db.exec("SELECT id FROM students WHERE student_id = ?;", [id]);
+        if (check.length && check[0].values.length) {
+          showToast(`รหัสนักศึกษา "${id}" มีอยู่ในระบบแล้ว`, "warning");
+          return;
+        }
+
+        // เพิ่มนักเรียนลงตาราง students
+        db.run("INSERT INTO students (student_id, student_name) VALUES (?, ?);", [id, name]);
+
+        persistDatabase();
+        studentModalInstance.hide();
+        renderTable();
+        showToast(`เพิ่มนักเรียน "${name}" สำเร็จ`, "success");
+
+      } catch (err) {
+        console.error("Add student failed:", err);
+        showToast("เกิดข้อผิดพลาดในการเพิ่มนักเรียน", "danger");
+      }
+    });
+
+    /* ลบนักเรียนออกจากรายวิชา */
+    function deleteStudent(studentId, studentName) {
+      if (!confirm(`ต้องการลบ "${studentName}" (${studentId}) ออกจากรายวิชาใช่หรือไม่?`)) return;
+
+      try {
+        db.run("DELETE FROM students WHERE student_id = ?;", [studentId]);
+        db.run("DELETE FROM attendance WHERE student_id = ?;", [studentId]);
+
+        persistDatabase();
+        renderTable();
+        showToast(`ลบนักเรียนเรียบร้อย`, "danger");
+
+      } catch (err) {
+        console.error("Delete failed:", err);
+        showToast("ไม่สามารถลบข้อมูลได้", "danger");
+      }
+    }
+
+    /* ==========================================================================
+       RENDER TABLE & STATS
+       ========================================================================== */
+    function renderTable() {
+      if (!db) return;
+
+      const tbody = document.getElementById('attendanceTbody');
+      const emptyState = document.getElementById('emptyState');
+      const table = document.getElementById('attendanceTable');
+      const filterValue = document.getElementById('filterStatus').value;
+      const searchQuery = (document.getElementById('searchInput').value || '').trim().toLowerCase();
+
+      // ดึงรายชื่อนักเรียนทั้งหมดพร้อมสถานะการเช็คชื่อล่าสุด (LEFT JOIN)
+      const query = `
+        SELECT 
+          s.student_id, 
+          s.student_name, 
+          a.status, 
+          a.check_time 
+        FROM students s
+        LEFT JOIN attendance a ON s.student_id = a.student_id
+        ORDER BY s.student_id ASC;
+      `;
+      const result = db.exec(query);
+
+      updateStats();
+      tbody.innerHTML = '';
+
+      if (!result.length || !result[0].values.length) {
+        table.classList.add('d-none');
+        emptyState.classList.remove('d-none');
+        return;
+      }
+
+      table.classList.remove('d-none');
+      emptyState.classList.add('d-none');
+
+      const rows = result[0].values;
+      let count = 0;
+
+      rows.forEach((row) => {
+        const [sId, name, status, time] = row;
+        const currentStatus = status || 'UNCHECKED';
+
+        // Filter
+        if (filterValue !== 'ALL') {
+          if (filterValue === 'UNCHECKED' && status) return;
+          if (filterValue !== 'UNCHECKED' && status !== filterValue) return;
+        }
+
+        // Search
+        if (searchQuery) {
+          const matchId = String(sId).toLowerCase().includes(searchQuery);
+          const matchName = String(name).toLowerCase().includes(searchQuery);
+          if (!matchId && !matchName) return;
+        }
+
+        count++;
+
+        // Status Button Group (Segmented Controls)
+        const isPresent = currentStatus === 'มาเรียน' ? 'active-present' : '';
+        const isLate = currentStatus === 'มาสาย' ? 'active-late' : '';
+        const isLeave = currentStatus === 'ลา' ? 'active-leave' : '';
+        const isAbsent = currentStatus === 'ขาดเรียน' ? 'active-absent' : '';
+
+        const tr = document.createElement('tr');
+        tr.innerHTML = `
+          <td class="text-center fw-medium" style="color: var(--text-muted); font-size: 0.86rem;">${count}</td>
+          <td><span class="code-pill">${escapeHtml(sId)}</span></td>
+          <td class="fw-semibold" style="color: var(--text-title);">${escapeHtml(name)}</td>
+          <td>
+            <div class="status-group">
+              <button type="button" class="btn-status-mark ${isPresent}" onclick="markAttendance('${escapeHtml(sId)}', '${escapeHtml(name)}', 'มาเรียน')">มา</button>
+              <button type="button" class="btn-status-mark ${isLate}" onclick="markAttendance('${escapeHtml(sId)}', '${escapeHtml(name)}', 'มาสาย')">สาย</button>
+              <button type="button" class="btn-status-mark ${isLeave}" onclick="markAttendance('${escapeHtml(sId)}', '${escapeHtml(name)}', 'ลา')">ลา</button>
+              <button type="button" class="btn-status-mark ${isAbsent}" onclick="markAttendance('${escapeHtml(sId)}', '${escapeHtml(name)}', 'ขาดเรียน')">ขาด</button>
+            </div>
+          </td>
+          <td class="small" style="color: var(--text-muted);">
+            ${time ? `<svg class="icon icon-sm me-1"><use href="#icon-clock"/></svg>${escapeHtml(time)}` : '<span class="text-muted fst-italic">ยังไม่ได้เช็ค</span>'}
+          </td>
+          <td class="text-center">
+            <button type="button" class="btn-delete" title="ลบออกจากรายวิชา" onclick="deleteStudent('${escapeHtml(sId)}', '${escapeHtml(name)}')">
+              <svg class="icon icon-sm"><use href="#icon-trash"/></svg>
+            </button>
+          </td>
+        `;
+        tbody.appendChild(tr);
+      });
+    }
+
+    /* Update Stat Cards */
+    function updateStats() {
+      if (!db) return;
+
+      let present = 0, late = 0, leave = 0, absent = 0;
+
+      const groupQuery = "SELECT status, COUNT(*) as cnt FROM attendance GROUP BY status;";
+      const res = db.exec(groupQuery);
+
+      if (res.length && res[0].values.length) {
+        res[0].values.forEach(([st, cnt]) => {
+          if (st === 'มาเรียน') present = cnt;
+          else if (st === 'มาสาย') late = cnt;
+          else if (st === 'ลา') leave = cnt;
+          else if (st === 'ขาดเรียน') absent = cnt;
+        });
+      }
+
+      document.getElementById('statPresent').textContent = present;
+      document.getElementById('statLate').textContent = late;
+      document.getElementById('statLeave').textContent = leave;
+      document.getElementById('statAbsent').textContent = absent;
+    }
+
+    /* ==========================================================================
+       EXPORT / IMPORT SQLITE & CSV
+       ========================================================================== */
+    function exportDatabaseFile() {
+      if (!db) return;
+
+      const data = db.export();
+      const blob = new Blob([data], { type: "application/x-sqlite3" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `attendance_${new Date().toISOString().slice(0, 10)}.db`;
+      document.body.appendChild(a);
+      a.click();
+      document.body.removeChild(a);
+
+      showToast("ดาวน์โหลดไฟล์ SQLite (.db) เรียบร้อย", "success");
+    }
+
+    function triggerImportDb() {
+      document.getElementById('importDbInput').click();
+    }
+
+    function importDatabaseFile(event) {
+      const file = event.target.files[0];
+      if (!file || !SQLInstance) return;
+
+      const reader = new FileReader();
+      reader.onload = function() {
+        try {
+          const u8Arr = new Uint8Array(reader.result);
+          db = new SQLInstance.Database(u8Arr);
+          persistDatabase();
+          renderTable();
+          showToast(`นำเข้าฐานข้อมูลจาก "${file.name}" สำเร็จ`, "success");
+        } catch (err) {
+          console.error("Import failed:", err);
+          showToast("ไฟล์ไม่ถูกต้องหรือไม่ใช่ SQLite Database", "danger");
+        }
+      };
+      reader.readAsArrayBuffer(file);
+      event.target.value = '';
+    }
+
+    function exportToCSV() {
+      if (!db) return;
+
+      const query = `
+        SELECT s.student_id, s.student_name, IFNULL(a.status, 'ยังไม่เช็ค'), IFNULL(a.check_time, '-')
+        FROM students s
+        LEFT JOIN attendance a ON s.student_id = a.student_id
+        ORDER BY s.student_id ASC;
+      `;
+      const result = db.exec(query);
+
+      if (!result.length || !result[0].values.length) {
+        showToast("ยังไม่มีข้อมูลให้ส่งออก", "warning");
+        return;
+      }
+
+      const rows = result[0].values;
+      let csvContent = "\uFEFFลำดับ,รหัสนักศึกษา,ชื่อ-นามสกุล,สถานะ,เวลาที่บันทึก\n";
+
+      rows.forEach((row, idx) => {
+        const [sId, name, status, time] = row;
+        csvContent += `"${idx + 1}","${sId}","${name}","${status}","${time}"\n`;
+      });
+
+      const blob = new Blob([csvContent], { type: "text/csv;charset=utf-8;" });
+      const url = URL.createObjectURL(blob);
+      const link = document.createElement("a");
+      link.setAttribute("href", url);
+      link.setAttribute("download", `attendance_${new Date().toISOString().slice(0, 10)}.csv`);
+      document.body.appendChild(link);
+      link.click();
+      document.body.removeChild(link);
+
+      showToast("ส่งออกไฟล์ CSV สำเร็จ", "success");
+    }
+
+    /* Toast Helper */
+    function showToast(message, type = "success") {
+      const msgEl = document.getElementById('toastMessage');
+      const iconWrap = document.getElementById('toastIconWrap');
+
+      msgEl.textContent = message;
+
+      if (type === "success") {
+        iconWrap.className = "text-success";
+        iconWrap.innerHTML = '<svg class="icon"><use href="#icon-check"/></svg>';
+      } else if (type === "danger") {
+        iconWrap.className = "text-danger";
+        iconWrap.innerHTML = '<svg class="icon"><use href="#icon-trash"/></svg>';
+      } else if (type === "warning") {
+        iconWrap.className = "text-warning";
+        iconWrap.innerHTML = '<svg class="icon"><use href="#icon-absent"/></svg>';
+      }
+
+      if (toastInstance) toastInstance.show();
+    }
+
+    function escapeHtml(text) {
+      if (!text) return '';
+      return String(text)
+        .replace(/&/g, "&amp;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#039;");
+    }
+  </script>
+</body>
+</html>
